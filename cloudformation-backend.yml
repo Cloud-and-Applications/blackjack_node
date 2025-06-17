@@ -1,0 +1,99 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  LambdaCodeS3Bucket:
+    Type: String
+    Description: "S3 bucket name for Lambda deployment package"
+  LambdaCodeS3Key:
+    Type: String
+    Description: "S3 object key for Lambda deployment package (zip file)"
+Resources:
+  BackendLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaBasicExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+
+  BlackjackBackendLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: BlackjackBackendHandler
+      Handler: dist/handler.handler
+      Runtime: nodejs18.x
+      Role: !GetAtt BackendLambdaExecutionRole.Arn
+      MemorySize: 512
+      Timeout: 10
+      Environment:
+        Variables:
+          MONGODB_URI: "<your-mongodb-uri>" # Replace or override with real value
+          JWT_SECRET: "<your-jwt-secret>" # Replace or override with real value
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+
+  BlackjackApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: BlackjackRestApi
+      ProtocolType: HTTP
+
+  BlackjackApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref BlackjackApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BlackjackBackendLambda.Arn}/invocations
+      PayloadFormatVersion: "2.0"
+
+  BlackjackApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref BlackjackApi
+      RouteKey: "ANY /{proxy+}"
+      Target: !Join ["/", ["integrations", !Ref BlackjackApiIntegration]]
+
+  BlackjackApiDeployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    DependsOn:
+      - BlackjackApiRoute
+    Properties:
+      ApiId: !Ref BlackjackApi
+
+  BlackjackApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      StageName: prod
+      ApiId: !Ref BlackjackApi
+      DeploymentId: !Ref BlackjackApiDeployment
+      AutoDeploy: true
+
+  LambdaApiInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt BlackjackBackendLambda.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${BlackjackApi}/*/*
+
+Outputs:
+  ApiEndpoint:
+    Description: "API Gateway endpoint URL"
+    Value: !Sub https://${BlackjackApi}.execute-api.${AWS::Region}.amazonaws.com/prod/
+  LambdaFunctionName:
+    Description: "Lambda Function Name"
+    Value: !Ref BlackjackBackendLambda
