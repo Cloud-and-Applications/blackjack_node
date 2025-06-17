@@ -40,8 +40,8 @@ Resources:
       Timeout: 10
       Environment:
         Variables:
-          MONGODB_URI: "<your-mongodb-uri>" # Replace or override with real value
-          JWT_SECRET: "<your-jwt-secret>" # Replace or override with real value
+          MONGODB_URI: "<your-mongodb-uri>"
+          JWT_SECRET: "<your-jwt-secret>"
       Code:
         S3Bucket: !Ref LambdaCodeS3Bucket
         S3Key: !Ref LambdaCodeS3Key
