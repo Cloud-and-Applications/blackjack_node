@@ -8,7 +8,7 @@ phases:
       - npm install
   build:
     commands:
-      - zip -r function.zip src/ node_modules/
+      - zip -r function.zip src/handler.ts src/routes/ src/models/ src/middleware/ src/services/ node_modules/
       - aws s3 cp function.zip s3://blackjack-node-bucket/function.zip
 artifacts:
   files:
